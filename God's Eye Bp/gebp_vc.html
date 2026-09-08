@@ -1,0 +1,1920 @@
+<!DOCTYPE html>
+<html lang="hu">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GOD'S EYE // BUDAPEST</title>
+    <meta name="description" content="GOD'S EYE Budapest – Real-time traffic camera surveillance dashboard">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #020a06;
+            --panel: #040f07;
+            --green: #00ff6a;
+            --green-dim: #00ff6a44;
+            --green-faint: #00ff6a11;
+            --amber: #ffb300;
+            --red: #ff2d55;
+            --text: #a0ffb8;
+            --border: #00ff6a33;
+            --cyan: #00e5ff;
+            --purple: #b388ff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Share Tech Mono', monospace;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, .07) 2px, rgba(0, 0, 0, .07) 4px);
+            pointer-events: none;
+            z-index: 9999
+        }
+
+        /* BOOT SCREEN */
+        #bootScreen {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity .8s
+        }
+
+        #bootScreen.done {
+            opacity: 0;
+            pointer-events: none
+        }
+
+        .boot-logo {
+            font-family: 'Orbitron', monospace;
+            font-weight: 900;
+            font-size: 2.4rem;
+            color: var(--green);
+            text-shadow: 0 0 40px var(--green), 0 0 80px rgba(0, 255, 106, .3);
+            letter-spacing: 8px;
+            margin-bottom: 30px;
+            animation: glitch .3s infinite
+        }
+
+        .boot-logo span {
+            color: var(--amber);
+            text-shadow: 0 0 40px var(--amber)
+        }
+
+        .boot-lines {
+            font-size: .7rem;
+            color: var(--green-dim);
+            line-height: 2;
+            text-align: left;
+            width: min(500px, 80vw);
+            max-height: 200px;
+            overflow: hidden
+        }
+
+        .boot-lines div {
+            opacity: 0;
+            animation: fadeIn .15s forwards
+        }
+
+        .boot-bar-wrap {
+            width: min(400px, 70vw);
+            height: 3px;
+            background: var(--green-faint);
+            margin-top: 30px;
+            border: 1px solid var(--green-dim);
+            overflow: hidden
+        }
+
+        .boot-bar {
+            height: 100%;
+            width: 0;
+            background: var(--green);
+            box-shadow: 0 0 10px var(--green);
+            transition: width .1s
+        }
+
+        @keyframes glitch {
+
+            0%,
+            100% {
+                transform: translate(0)
+            }
+
+            25% {
+                transform: translate(-2px, 1px)
+            }
+
+            50% {
+                transform: translate(1px, -1px)
+            }
+
+            75% {
+                transform: translate(-1px, 0)
+            }
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1
+            }
+        }
+
+        /* HEADER */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--panel);
+            flex-shrink: 0;
+            z-index: 10
+        }
+
+        .logo {
+            font-family: 'Orbitron', monospace;
+            font-weight: 900;
+            font-size: 1.1rem;
+            color: var(--green);
+            letter-spacing: 4px;
+            text-shadow: 0 0 20px var(--green)
+        }
+
+        .logo span {
+            color: var(--amber);
+            text-shadow: 0 0 20px var(--amber)
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 24px;
+            font-size: .7rem;
+            color: var(--text);
+            align-items: center
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 6px var(--green);
+            animation: blink 1.4s infinite
+        }
+
+        .dot.amber {
+            background: var(--amber);
+            box-shadow: 0 0 6px var(--amber);
+            animation-delay: .4s
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: .2
+            }
+        }
+
+        #clock {
+            font-family: 'Orbitron', monospace;
+            font-size: .85rem;
+            color: var(--green);
+            text-shadow: 0 0 10px var(--green)
+        }
+
+        /* MAIN LAYOUT */
+        .main {
+            display: flex;
+            flex: 1;
+            overflow: hidden
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 280px;
+            flex-shrink: 0;
+            background: var(--panel);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 10;
+            transition: transform .3s
+        }
+
+        .sidebar-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            font-family: 'Orbitron', monospace;
+            font-size: .6rem;
+            letter-spacing: 2px;
+            color: var(--green);
+            text-shadow: 0 0 8px var(--green)
+        }
+
+        .sidebar-search {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 6px
+        }
+
+        .sidebar-search input,
+        .sidebar-search select {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: .7rem;
+            padding: 6px 10px;
+            outline: none;
+            width: 100%
+        }
+
+        .sidebar-search input:focus,
+        .sidebar-search select:focus {
+            border-color: var(--green);
+            box-shadow: 0 0 8px var(--green-dim)
+        }
+
+        .sidebar-search select {
+            cursor: pointer
+        }
+
+        .sidebar-search select option {
+            background: var(--panel);
+            color: var(--text)
+        }
+
+        .camera-list {
+            overflow-y: auto;
+            flex: 1;
+            padding: 6px 0
+        }
+
+        .camera-list::-webkit-scrollbar {
+            width: 4px
+        }
+
+        .camera-list::-webkit-scrollbar-track {
+            background: transparent
+        }
+
+        .camera-list::-webkit-scrollbar-thumb {
+            background: var(--green-dim);
+            border-radius: 2px
+        }
+
+        .cam-item {
+            padding: 8px 14px;
+            cursor: pointer;
+            border-left: 2px solid transparent;
+            transition: all .15s;
+            display: flex;
+            align-items: center;
+            gap: 10px
+        }
+
+        .cam-item:hover,
+        .cam-item.active {
+            background: var(--green-faint);
+            border-left-color: var(--green)
+        }
+
+        .cam-item.filtered-out {
+            display: none
+        }
+
+        .cam-item:focus-visible {
+            outline: 1px solid var(--green);
+            outline-offset: -1px
+        }
+
+        .cam-index {
+            font-size: .6rem;
+            color: var(--green-dim);
+            width: 22px;
+            flex-shrink: 0
+        }
+
+        .cam-name {
+            font-size: .7rem;
+            color: var(--text);
+            line-height: 1.3
+        }
+
+        .cam-name small {
+            color: #444
+        }
+
+        .cam-type-badge {
+            font-size: .5rem;
+            padding: 1px 5px;
+            border-radius: 2px;
+            margin-left: auto;
+            flex-shrink: 0;
+            letter-spacing: 1px
+        }
+
+        .type-bridge {
+            color: var(--cyan);
+            border: 1px solid var(--cyan)
+        }
+
+        .type-highway {
+            color: var(--amber);
+            border: 1px solid var(--amber)
+        }
+
+        .type-intersection {
+            color: var(--green);
+            border: 1px solid var(--green)
+        }
+
+        .type-square {
+            color: var(--purple);
+            border: 1px solid var(--purple)
+        }
+
+        .type-railway {
+            color: var(--red);
+            border: 1px solid var(--red)
+        }
+
+        /* HAMBURGER (mobile) */
+        .hamburger {
+            display: none;
+            background: none;
+            border: 1px solid var(--green-dim);
+            color: var(--green);
+            font-size: 1.2rem;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-family: 'Share Tech Mono', monospace
+        }
+
+        /* MAP */
+        #map {
+            flex: 1;
+            position: relative
+        }
+
+        .leaflet-container {
+            background: #020a06 !important
+        }
+
+        /* RADAR SWEEP */
+        .radar-sweep {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 500px;
+            height: 500px;
+            margin: -250px 0 0 -250px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 400;
+            opacity: .12;
+            animation: radarSpin 6s linear infinite;
+            background: conic-gradient(from 0deg, transparent 0deg, transparent 340deg, var(--green) 360deg)
+        }
+
+        @keyframes radarSpin {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        /* HUD CORNERS */
+        .hud-corner {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            z-index: 500;
+            pointer-events: none
+        }
+
+        .hud-corner.tl {
+            top: 10px;
+            left: 10px;
+            border-top: 2px solid var(--green);
+            border-left: 2px solid var(--green)
+        }
+
+        .hud-corner.tr {
+            top: 10px;
+            right: 10px;
+            border-top: 2px solid var(--green);
+            border-right: 2px solid var(--green)
+        }
+
+        .hud-corner.bl {
+            bottom: 10px;
+            left: 10px;
+            border-bottom: 2px solid var(--green);
+            border-left: 2px solid var(--green)
+        }
+
+        .hud-corner.br {
+            bottom: 10px;
+            right: 10px;
+            border-bottom: 2px solid var(--green);
+            border-right: 2px solid var(--green)
+        }
+
+        .hud-coords {
+            position: absolute;
+            bottom: 18px;
+            right: 50px;
+            z-index: 500;
+            font-size: .6rem;
+            color: var(--green-dim);
+            pointer-events: none;
+            letter-spacing: 1px
+        }
+
+        /* STATS HUD */
+        .stats-hud {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            z-index: 500;
+            background: rgba(4, 15, 7, .85);
+            border: 1px solid var(--border);
+            padding: 10px 14px;
+            font-size: .6rem;
+            line-height: 2;
+            pointer-events: none;
+            backdrop-filter: blur(4px)
+        }
+
+        .stats-hud .label {
+            color: #555
+        }
+
+        .stats-hud .val {
+            color: var(--green);
+            text-shadow: 0 0 6px var(--green)
+        }
+
+        /* AUTO-CYCLE MINI PANEL */
+        .cycle-panel {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 500;
+            background: rgba(4, 15, 7, .9);
+            border: 1px solid var(--border);
+            padding: 10px 14px;
+            width: 220px;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            transition: border-color .3s
+        }
+
+        .cycle-panel:hover {
+            border-color: var(--green)
+        }
+
+        .cycle-panel .cp-label {
+            font-family: 'Orbitron', monospace;
+            font-size: .5rem;
+            color: var(--green-dim);
+            letter-spacing: 2px;
+            margin-bottom: 6px
+        }
+
+        .cycle-panel .cp-name {
+            font-size: .75rem;
+            color: var(--green);
+            text-shadow: 0 0 8px var(--green);
+            margin-bottom: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis
+        }
+
+        .cycle-panel .cp-detail {
+            font-size: .58rem;
+            color: #555
+        }
+
+        .cycle-bar {
+            height: 2px;
+            background: var(--green-faint);
+            margin-top: 8px;
+            overflow: hidden
+        }
+
+        .cycle-bar-fill {
+            height: 100%;
+            background: var(--green);
+            width: 0%;
+            transition: width .1s linear
+        }
+
+        /* MARKER */
+        .cam-marker {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, .3);
+            cursor: pointer;
+            transition: transform .2s;
+            position: relative
+        }
+
+        .cam-marker::after {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            border: 1px solid;
+            opacity: .5;
+            animation: markerPulse 2s infinite
+        }
+
+        .cam-marker:hover {
+            transform: scale(1.6)
+        }
+
+        .cam-marker.active {
+            transform: scale(1.8)
+        }
+
+        .marker-green {
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green)
+        }
+
+        .marker-green::after {
+            border-color: var(--green)
+        }
+
+        .marker-cyan {
+            background: var(--cyan);
+            box-shadow: 0 0 8px var(--cyan)
+        }
+
+        .marker-cyan::after {
+            border-color: var(--cyan)
+        }
+
+        .marker-amber {
+            background: var(--amber);
+            box-shadow: 0 0 8px var(--amber)
+        }
+
+        .marker-amber::after {
+            border-color: var(--amber)
+        }
+
+        .marker-purple {
+            background: var(--purple);
+            box-shadow: 0 0 8px var(--purple)
+        }
+
+        .marker-purple::after {
+            border-color: var(--purple)
+        }
+
+        .marker-red {
+            background: var(--red);
+            box-shadow: 0 0 8px var(--red)
+        }
+
+        .marker-red::after {
+            border-color: var(--red)
+        }
+
+        .cam-marker.dimmed {
+            opacity: .15;
+            pointer-events: none
+        }
+
+        @keyframes markerPulse {
+            0% {
+                transform: scale(1);
+                opacity: .5
+            }
+
+            70% {
+                transform: scale(2.2);
+                opacity: 0
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 0
+            }
+        }
+
+        /* CAMERA MODAL */
+        .cam-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .85);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px)
+        }
+
+        .cam-modal.open {
+            display: flex
+        }
+
+        .cam-window {
+            background: var(--panel);
+            border: 1px solid var(--green-dim);
+            box-shadow: 0 0 60px rgba(0, 255, 106, .15), inset 0 0 30px rgba(0, 0, 0, .5);
+            width: min(760px, 95vw);
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: modalIn .3s
+        }
+
+        @keyframes modalIn {
+            from {
+                transform: scale(.95);
+                opacity: 0
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1
+            }
+        }
+
+        .cam-window-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(0, 255, 106, .05)
+        }
+
+        .cam-window-title {
+            font-family: 'Orbitron', monospace;
+            font-size: .7rem;
+            color: var(--green);
+            letter-spacing: 2px;
+            text-shadow: 0 0 8px var(--green)
+        }
+
+        .cam-window-meta {
+            font-size: .6rem;
+            color: #555;
+            margin-top: 2px
+        }
+
+        .btn-close {
+            background: none;
+            border: 1px solid var(--red);
+            color: var(--red);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: .65rem;
+            padding: 3px 10px;
+            cursor: pointer;
+            letter-spacing: 1px;
+            transition: all .2s
+        }
+
+        .btn-close:hover {
+            background: var(--red);
+            color: #000
+        }
+
+        .cam-feed {
+            position: relative;
+            background: #000;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden
+        }
+
+        .cam-feed img {
+            width: 100%;
+            display: block;
+            object-fit: contain;
+            max-height: 50vh
+        }
+
+        .cam-feed::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0, 255, 106, .03) 3px, rgba(0, 255, 106, .03) 6px);
+            pointer-events: none
+        }
+
+        .feed-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border: 1px solid var(--green-dim)
+        }
+
+        .feed-overlay::before,
+        .feed-overlay::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-color: var(--green);
+            border-style: solid
+        }
+
+        .feed-overlay::before {
+            top: 8px;
+            left: 8px;
+            border-width: 2px 0 0 2px
+        }
+
+        .feed-overlay::after {
+            bottom: 8px;
+            right: 8px;
+            border-width: 0 2px 2px 0
+        }
+
+        .feed-loading {
+            font-size: .75rem;
+            color: var(--green-dim);
+            letter-spacing: 2px;
+            animation: pulse 1s infinite
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: .3
+            }
+        }
+
+        .signal-bar {
+            display: flex;
+            gap: 3px;
+            align-items: flex-end;
+            padding: 0 16px 8px
+        }
+
+        .signal-bar div {
+            width: 6px;
+            background: var(--green);
+            opacity: .3;
+            animation: sigPulse 1.5s infinite
+        }
+
+        .signal-bar div:nth-child(1) {
+            height: 6px;
+            animation-delay: 0s
+        }
+
+        .signal-bar div:nth-child(2) {
+            height: 10px;
+            animation-delay: .15s
+        }
+
+        .signal-bar div:nth-child(3) {
+            height: 14px;
+            animation-delay: .3s
+        }
+
+        .signal-bar div:nth-child(4) {
+            height: 18px;
+            animation-delay: .45s
+        }
+
+        .signal-bar div:nth-child(5) {
+            height: 22px;
+            animation-delay: .6s
+        }
+
+        @keyframes sigPulse {
+
+            0%,
+            100% {
+                opacity: .3
+            }
+
+            50% {
+                opacity: 1
+            }
+        }
+
+        .cam-nav {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 16px 10px
+        }
+
+        .btn-nav {
+            background: none;
+            border: 1px solid var(--green-dim);
+            color: var(--green);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: .65rem;
+            padding: 4px 14px;
+            cursor: pointer;
+            letter-spacing: 1px;
+            transition: all .2s
+        }
+
+        .btn-nav:hover {
+            background: var(--green-faint)
+        }
+
+        .cam-info-bar {
+            display: flex;
+            gap: 16px;
+            padding: 10px 16px;
+            border-top: 1px solid var(--border);
+            font-size: .62rem;
+            color: #555;
+            flex-wrap: wrap
+        }
+
+        .cam-info-bar span {
+            color: var(--text)
+        }
+
+        .btn-refresh {
+            background: none;
+            border: 1px solid var(--green-dim);
+            color: var(--green);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: .65rem;
+            padding: 4px 12px;
+            cursor: pointer;
+            letter-spacing: 1px;
+            transition: all .2s;
+            margin-left: auto
+        }
+
+        .btn-refresh:hover {
+            background: var(--green-dim)
+        }
+
+        /* MOBILE */
+        @media(max-width:768px) {
+            .hamburger {
+                display: block
+            }
+
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                z-index: 9000;
+                transform: translateX(-100%)
+            }
+
+            .sidebar.open {
+                transform: translateX(0)
+            }
+
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, .6);
+                z-index: 8999
+            }
+
+            .sidebar-overlay.open {
+                display: block
+            }
+
+            .cycle-panel {
+                width: 180px;
+                top: auto;
+                bottom: 16px;
+                right: 16px
+            }
+
+            .stats-hud {
+                display: none
+            }
+
+            .status-bar {
+                gap: 10px;
+                font-size: .6rem
+            }
+        }
+
+        /* ── CROSSHAIR ── */
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+            z-index: 500;
+        }
+
+        .crosshair::before,
+        .crosshair::after {
+            content: '';
+            position: absolute;
+            background: var(--green);
+            opacity: .5;
+        }
+
+        .crosshair::before {
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 1px;
+            transform: translateY(-50%);
+        }
+
+        .crosshair::after {
+            left: 50%;
+            top: 0;
+            height: 100%;
+            width: 1px;
+            transform: translateX(-50%);
+        }
+
+        .crosshair-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            border: 1px solid var(--green);
+            border-radius: 50%;
+            opacity: .5;
+            pointer-events: none;
+            z-index: 500;
+        }
+
+        /* ── MULTI-CAM MODAL ── */
+        .multicam-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .92);
+            z-index: 10000;
+            flex-direction: column;
+            backdrop-filter: blur(6px);
+        }
+
+        .multicam-modal.open {
+            display: flex;
+        }
+
+        .multicam-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 16px;
+            border-bottom: 1px solid var(--border);
+            background: var(--panel);
+            flex-shrink: 0;
+        }
+
+        .multicam-title {
+            font-family: 'Orbitron', monospace;
+            font-size: .65rem;
+            color: var(--green);
+            letter-spacing: 3px;
+            text-shadow: 0 0 8px var(--green);
+        }
+
+        .multicam-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .btn-grid {
+            background: none;
+            border: 1px solid var(--green-dim);
+            color: var(--green);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: .6rem;
+            padding: 3px 10px;
+            cursor: pointer;
+            letter-spacing: 1px;
+            transition: all .2s;
+        }
+
+        .btn-grid.active,
+        .btn-grid:hover {
+            background: var(--green-dim);
+        }
+
+        .multicam-grid {
+            flex: 1;
+            display: grid;
+            gap: 3px;
+            padding: 3px;
+            overflow: hidden;
+        }
+
+        .multicam-grid.grid-4 {
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+        }
+
+        .multicam-grid.grid-9 {
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+        }
+
+        .multicam-cell {
+            position: relative;
+            background: #000;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            cursor: pointer;
+            transition: border-color .2s;
+        }
+
+        .multicam-cell:hover {
+            border-color: var(--green);
+        }
+
+        .multicam-cell img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .multicam-cell .cell-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0, 0, 0, .85));
+            padding: 12px 8px 6px;
+            font-size: .55rem;
+            color: var(--text);
+            letter-spacing: .5px;
+        }
+
+        .multicam-cell .cell-id {
+            position: absolute;
+            top: 6px;
+            left: 8px;
+            font-size: .5rem;
+            color: var(--green-dim);
+        }
+
+        .multicam-cell .cell-loading {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: .6rem;
+            color: var(--green-dim);
+            letter-spacing: 1px;
+            animation: pulse 1s infinite;
+        }
+
+        .multicam-cell .cell-offline {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: .55rem;
+            color: #333;
+        }
+
+        .multicam-cell .cell-offline a {
+            color: var(--green-dim);
+            text-decoration: none;
+            border: 1px solid var(--border);
+            padding: 3px 8px;
+            font-size: .5rem;
+        }
+
+        .multicam-cell .cell-offline a:hover {
+            color: var(--green);
+            border-color: var(--green);
+        }
+
+        .cell-rec {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+            font-size: .5rem;
+            color: var(--red);
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .cell-rec::before {
+            content: '';
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--red);
+            box-shadow: 0 0 4px var(--red);
+            animation: blink 1s infinite;
+        }
+
+        /* ── MULTICAM BUTTON ON MAP ── */
+        .btn-multicam {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 500;
+            background: rgba(4, 15, 7, .9);
+            border: 1px solid var(--green-dim);
+            color: var(--green);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: .65rem;
+            padding: 6px 16px;
+            cursor: pointer;
+            letter-spacing: 2px;
+            backdrop-filter: blur(4px);
+            transition: all .2s;
+        }
+
+        .btn-multicam:hover {
+            border-color: var(--green);
+            background: var(--green-faint);
+            box-shadow: 0 0 12px var(--green-dim);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- BOOT SCREEN -->
+    <div id="bootScreen">
+        <div class="boot-logo">GOD'S <span>EYE</span></div>
+        <div class="boot-lines" id="bootLines"></div>
+        <div class="boot-bar-wrap">
+            <div class="boot-bar" id="bootBar"></div>
+        </div>
+    </div>
+
+    <header>
+        <div style="display:flex;align-items:center;gap:12px">
+            <button class="hamburger" id="hamburgerBtn" aria-label="Menü megnyitása">☰</button>
+            <div class="logo">GOD'S <span>EYE</span> // BUDAPEST</div>
+        </div>
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="dot"></div> RENDSZER AKTÍV
+            </div>
+            <div class="status-item">
+                <div class="dot amber"></div> KAMERÁK: <span id="camCount">--</span>
+            </div>
+            <div class="status-item">KERÜLETEK: <span id="distCount">--</span></div>
+            <div class="status-item" id="proxyStatusItem" title="Proxy szerver állapota">
+                <div class="dot" id="proxyDot" style="background:#444;box-shadow:none;animation:none"></div>
+                <span id="proxyLabel" style="color:#444">PROXY: --</span>
+            </div>
+            <div id="clock">00:00:00</div>
+        </div>
+    </header>
+
+    <div class="main">
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">▶ KAMERA LISTA // BUDAPEST</div>
+            <div class="sidebar-search">
+                <input type="text" id="searchInput" placeholder="⌕ KERESÉS..." aria-label="Kamera keresése">
+                <select id="districtFilter" aria-label="Kerület szűrő">
+                    <option value="">ÖSSZES KERÜLET</option>
+                </select>
+                <div style="display:flex;gap:6px">
+                    <button id="favFilterBtn" onclick="toggleFavFilter()"
+                        style="flex:1;background:none;border:1px solid var(--border);color:#555;font-family:'Share Tech Mono',monospace;font-size:.6rem;padding:5px;cursor:pointer;letter-spacing:1px;transition:all .2s">☆
+                        KEDVENCEK</button>
+                    <button onclick="clearFavs()"
+                        style="background:none;border:1px solid var(--border);color:#444;font-family:'Share Tech Mono',monospace;font-size:.6rem;padding:5px 8px;cursor:pointer;transition:all .2s"
+                        title="Kedvencek törlése">✕</button>
+                </div>
+            </div>
+            <div class="camera-list" id="cameraList"></div>
+        </div>
+        <div id="map">
+            <div class="radar-sweep"></div>
+            <div class="hud-corner tl"></div>
+            <div class="hud-corner tr"></div>
+            <div class="hud-corner bl"></div>
+            <div class="hud-corner br"></div>
+            <div class="crosshair"></div>
+            <div class="crosshair-ring"></div>
+            <div class="hud-coords" id="hudCoords">47.4979° É | 19.0402° K</div>
+            <button class="btn-multicam" id="openMulticamBtn">⊞ MULTI-CAM NÉZET</button>
+            <div class="stats-hud" id="statsHud">
+                <div><span class="label">KAMERÁK ONLINE:</span> <span class="val" id="statCams">--</span></div>
+                <div><span class="label">KERÜLETEK:</span> <span class="val" id="statDist">--</span></div>
+                <div><span class="label">UPTIME:</span> <span class="val" id="statUptime">00:00:00</span></div>
+                <div><span class="label">STRUKTÚRA:</span> <span class="val">AKTÍV</span></div>
+            </div>
+            <div class="cycle-panel" id="cyclePanel" title="Kattints a kamera megnyitásához">
+                <div class="cp-label">▶ AUTO-SCAN</div>
+                <div class="cp-name" id="cpName">INICIALIZÁLÁS...</div>
+                <div class="cp-detail" id="cpDetail">--</div>
+                <div class="cycle-bar">
+                    <div class="cycle-bar-fill" id="cycleFill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MULTI-CAM MODAL -->
+    <div class="multicam-modal" id="multicamModal">
+        <div class="multicam-header">
+            <div class="multicam-title">⊞ MULTI-CAM SURVEILLANCE // BUDAPEST</div>
+            <div class="multicam-controls">
+                <button class="btn-grid active" id="btnGrid4" onclick="setGrid(4)">2×2</button>
+                <button class="btn-grid" id="btnGrid9" onclick="setGrid(9)">3×3</button>
+                <button class="btn-refresh" onclick="refreshAllCells()">↺ ÖSSZES FRISSÍT</button>
+                <button class="btn-close" onclick="closeMulticam()">✕ BEZÁR</button>
+            </div>
+        </div>
+        <div class="multicam-grid grid-4" id="multicamGrid"></div>
+    </div>
+
+    <!-- CAMERA MODAL -->
+    <div class="cam-modal" id="camModal">
+        <div class="cam-window">
+            <div class="cam-window-header">
+                <div>
+                    <div class="cam-window-title" id="modalTitle">KAMERA</div>
+                    <div class="cam-window-meta" id="modalMeta"></div>
+                </div>
+                <button class="btn-close" onclick="closeModal()">✕ BEZÁR</button>
+            </div>
+            <div class="cam-feed" id="camFeed">
+                <div class="feed-loading">● CSATLAKOZÁS...</div>
+                <div class="feed-overlay"></div>
+            </div>
+            <div class="signal-bar">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <div class="cam-nav">
+                <button class="btn-nav" id="prevCamBtn">◄ ELŐZŐ</button>
+                <button class="btn-nav" id="nextCamBtn">KÖVETKEZŐ ►</button>
+            </div>
+            <div class="cam-info-bar" id="camInfoBar">
+                <button class="btn-refresh" onclick="loadFeed()">↺ FRISSÍT</button>
+            </div>
+            <div
+                style="display:flex;align-items:center;justify-content:space-between;padding:4px 16px 8px;border-top:1px solid var(--border)">
+                <span style="font-size:.55rem;color:#333" id="snapTimestamp">SNAPSHOT: --</span>
+                <button id="favBtn" onclick="toggleFav()"
+                    style="background:none;border:1px solid var(--border);color:#555;font-family:'Share Tech Mono',monospace;font-size:.6rem;padding:3px 12px;cursor:pointer;letter-spacing:1px;transition:all .2s">☆
+                    KEDVENC</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+
+        const CAMERAS = [
+            { id: 10001, name: "Kálvin tér", lat: 47.4906, lng: 19.0633, district: "IX", type: "square" },
+            { id: 10002, name: "Astoria", lat: 47.4969, lng: 19.0601, district: "VII", type: "intersection" },
+            { id: 10003, name: "Deák Ferenc tér", lat: 47.4987, lng: 19.0535, district: "V", type: "square" },
+            { id: 10004, name: "Blaha Lujza tér", lat: 47.4999, lng: 19.0702, district: "VIII", type: "square" },
+            { id: 10005, name: "Keleti pályaudvar", lat: 47.5003, lng: 19.0836, district: "VIII", type: "railway" },
+            { id: 10006, name: "Nyugati pályaudvar", lat: 47.5086, lng: 19.0543, district: "XIII", type: "railway" },
+            { id: 10007, name: "Oktogon", lat: 47.5054, lng: 19.0622, district: "VI", type: "intersection" },
+            { id: 10008, name: "Széll Kálmán tér", lat: 47.5078, lng: 19.0234, district: "II", type: "square" },
+            { id: 10009, name: "Boráros tér", lat: 47.4780, lng: 19.0649, district: "IX", type: "square" },
+            { id: 10010, name: "Petőfi híd – pesti hídfő", lat: 47.4769, lng: 19.0660, district: "IX", type: "bridge" },
+            { id: 10011, name: "Rákóczi híd – pesti hídfő", lat: 47.4696, lng: 19.0742, district: "IX", type: "bridge" },
+            { id: 10012, name: "Lánchíd – pesti hídfő", lat: 47.4975, lng: 19.0507, district: "V", type: "bridge" },
+            { id: 10013, name: "Margit híd – pesti hídfő", lat: 47.5121, lng: 19.0469, district: "XIII", type: "bridge" },
+            { id: 10014, name: "Árpád híd – pesti rámpa", lat: 47.5326, lng: 19.0534, district: "XIII", type: "bridge" },
+            { id: 10015, name: "Flórián tér", lat: 47.5545, lng: 19.0468, district: "III", type: "square" },
+            { id: 10016, name: "Corvin negyed", lat: 47.4874, lng: 19.0665, district: "VIII", type: "intersection" },
+            { id: 10017, name: "Üllői út / Nagykörút", lat: 47.4857, lng: 19.0703, district: "IX", type: "intersection" },
+            { id: 10018, name: "Fehér út csomópont", lat: 47.5163, lng: 19.1243, district: "XIV", type: "intersection" },
+            { id: 10019, name: "Hungária krt – Kerepesi út", lat: 47.5059, lng: 19.1003, district: "VIII", type: "highway" },
+            { id: 10020, name: "Bosnyák tér", lat: 47.5235, lng: 19.1109, district: "XIV", type: "square" },
+            { id: 10021, name: "Zugló – Szugló utca", lat: 47.5186, lng: 19.0996, district: "XIV", type: "intersection" },
+            { id: 10022, name: "Rákosrendező", lat: 47.5276, lng: 19.0638, district: "XIII", type: "railway" },
+            { id: 10023, name: "Váci út / Róbert K. krt", lat: 47.5248, lng: 19.0562, district: "XIII", type: "intersection" },
+            { id: 10024, name: "Budaörsi út csomópont", lat: 47.4787, lng: 18.9968, district: "XI", type: "highway" },
+            { id: 10025, name: "Móricz Zsigmond körtér", lat: 47.4769, lng: 19.0321, district: "XI", type: "square" },
+            { id: 10026, name: "Bartók Béla út", lat: 47.4796, lng: 19.0394, district: "XI", type: "intersection" },
+            { id: 10027, name: "Kosztolányi Dezső tér", lat: 47.4734, lng: 19.0307, district: "XI", type: "square" },
+            { id: 10028, name: "Etele tér", lat: 47.4576, lng: 19.0210, district: "XI", type: "square" },
+            { id: 10029, name: "Fehérvári út / Szerémi út", lat: 47.4665, lng: 19.0337, district: "XI", type: "intersection" },
+            { id: 10030, name: "Kelenföldi pályaudvar", lat: 47.4649, lng: 19.0234, district: "XI", type: "railway" },
+            { id: 10031, name: "Hegyalja út / Alkotás u.", lat: 47.4895, lng: 19.0096, district: "I", type: "intersection" },
+            { id: 10032, name: "Alagút utca", lat: 47.4959, lng: 19.0275, district: "I", type: "intersection" },
+            { id: 10033, name: "Clark Ádám tér", lat: 47.4985, lng: 19.0393, district: "I", type: "square" },
+            { id: 10034, name: "Mammut – Lövőház utca", lat: 47.5087, lng: 19.0214, district: "II", type: "intersection" },
+            { id: 10035, name: "Pesthidegkút – Auchan", lat: 47.5578, lng: 18.9834, district: "II", type: "intersection" },
+            { id: 10036, name: "Csillaghegy – Szentendrei út", lat: 47.5843, lng: 19.0504, district: "III", type: "highway" },
+            { id: 10037, name: "Óbuda – Bécsi út", lat: 47.5407, lng: 19.0343, district: "III", type: "intersection" },
+            { id: 10038, name: "Szentlélek tér", lat: 47.5351, lng: 19.0399, district: "III", type: "square" },
+            { id: 10039, name: "Újpest – Árpád út", lat: 47.5613, lng: 19.0738, district: "IV", type: "intersection" },
+            { id: 10040, name: "Rákospalota – Kassai tér", lat: 47.5743, lng: 19.1066, district: "XV", type: "square" },
+            { id: 10041, name: "Erzsébet híd – budai hídfő", lat: 47.4881, lng: 19.0474, district: "I", type: "bridge" },
+            { id: 10042, name: "Szabadság híd – budai", lat: 47.4853, lng: 19.0544, district: "XI", type: "bridge" },
+            { id: 10043, name: "Várkert Bazár", lat: 47.4941, lng: 19.0437, district: "I", type: "intersection" },
+            { id: 10044, name: "Margitsziget – bejárat", lat: 47.5152, lng: 19.0466, district: "XIII", type: "intersection" },
+            { id: 10045, name: "Szépvölgyi út / Bécsi út", lat: 47.5366, lng: 19.0301, district: "III", type: "intersection" },
+            { id: 10046, name: "Hűvösvölgy végállomás", lat: 47.5451, lng: 18.9607, district: "II", type: "intersection" },
+            { id: 10047, name: "Bajcsy-Zs. út / Deák tér", lat: 47.4992, lng: 19.0558, district: "V", type: "intersection" },
+            { id: 10048, name: "Vörösmarty tér", lat: 47.4967, lng: 19.0490, district: "V", type: "square" },
+            { id: 10049, name: "Széchenyi tér (Lánchíd)", lat: 47.4998, lng: 19.0465, district: "V", type: "square" },
+            { id: 10050, name: "Kossuth Lajos tér", lat: 47.5073, lng: 19.0441, district: "V", type: "square" },
+            { id: 10051, name: "Nyugati tér – Podmaniczky", lat: 47.5103, lng: 19.0564, district: "VI", type: "intersection" },
+            { id: 10052, name: "Andrássy út / Bajza utca", lat: 47.5103, lng: 19.0681, district: "VI", type: "intersection" },
+            { id: 10053, name: "Hősök tere", lat: 47.5149, lng: 19.0776, district: "XIV", type: "square" },
+            { id: 10054, name: "Dózsa György út / Aréna", lat: 47.5109, lng: 19.0842, district: "XIV", type: "intersection" },
+            { id: 10055, name: "Thököly út / Hungária krt", lat: 47.5076, lng: 19.0893, district: "VII", type: "intersection" },
+            { id: 10056, name: "Ferenciek tere", lat: 47.4941, lng: 19.0562, district: "V", type: "square" },
+            { id: 10057, name: "Népszínház utca", lat: 47.4970, lng: 19.0726, district: "VIII", type: "intersection" },
+            { id: 10058, name: "Nagyvárad tér", lat: 47.4834, lng: 19.0830, district: "VIII", type: "square" },
+            { id: 10059, name: "Határ út metró", lat: 47.4397, lng: 19.0937, district: "IX", type: "intersection" },
+            { id: 10060, name: "Soroksári út / Kvassay", lat: 47.4652, lng: 19.0725, district: "IX", type: "highway" },
+            { id: 10061, name: "Gubacsi híd", lat: 47.4501, lng: 19.0815, district: "IX", type: "bridge" },
+            { id: 10062, name: "Csepel – Rákóczi F. út", lat: 47.4270, lng: 19.0783, district: "XXI", type: "intersection" },
+            { id: 10063, name: "Csepel – Szabadkikötő", lat: 47.4200, lng: 19.0912, district: "XXI", type: "highway" },
+            { id: 10064, name: "Pesterzsébet – Baross u.", lat: 47.4331, lng: 19.0970, district: "XX", type: "intersection" },
+            { id: 10065, name: "Pestszentlőrinc – Üllői", lat: 47.4282, lng: 19.1204, district: "XVIII", type: "highway" },
+            { id: 10066, name: "Ferihegy – Reptér bej.", lat: 47.4356, lng: 19.2168, district: "XVIII", type: "highway" },
+            { id: 10067, name: "Kőbánya alsó pályaudvar", lat: 47.4758, lng: 19.1165, district: "X", type: "railway" },
+            { id: 10068, name: "Örs vezér tere", lat: 47.5031, lng: 19.1158, district: "X", type: "square" },
+            { id: 10069, name: "Rákoskeresztúr – 3. kapu", lat: 47.4957, lng: 19.1618, district: "XVII", type: "intersection" },
+            { id: 10070, name: "Cinkota – Szabadság u.", lat: 47.5337, lng: 19.1630, district: "XVI", type: "intersection" },
+            { id: 10071, name: "Békásmegyer – Pünkösdf.", lat: 47.6032, lng: 19.0481, district: "III", type: "intersection" },
+            { id: 10072, name: "M1–M7 bevezető / Budaörsi", lat: 47.4581, lng: 18.9700, district: "XI", type: "highway" },
+            { id: 10073, name: "M3 bevezető – Szilas patak", lat: 47.5610, lng: 19.1090, district: "XV", type: "highway" },
+            { id: 10074, name: "M5 bevezető – Nagykőrösi", lat: 47.4115, lng: 19.1195, district: "XXIII", type: "highway" },
+            { id: 10075, name: "Üllői út / Könyves K. krt", lat: 47.4736, lng: 19.0872, district: "IX", type: "intersection" },
+            { id: 10076, name: "Savoya Park környéke", lat: 47.4389, lng: 19.0560, district: "XI", type: "intersection" },
+            { id: 10077, name: "Budafoki út / Szerémi", lat: 47.4598, lng: 19.0400, district: "XI", type: "intersection" },
+            { id: 10078, name: "Újbuda – Október 23. u.", lat: 47.4710, lng: 19.0254, district: "XI", type: "intersection" },
+            { id: 10079, name: "Zugligeti út", lat: 47.5181, lng: 18.9850, district: "XII", type: "intersection" },
+            { id: 10080, name: "Normafa – Diana út", lat: 47.5082, lng: 18.9595, district: "XII", type: "intersection" },
+            { id: 10081, name: "Déli pályaudvar", lat: 47.4988, lng: 19.0178, district: "I", type: "railway" },
+            { id: 10082, name: "Mexikói út", lat: 47.5191, lng: 19.0909, district: "XIV", type: "intersection" },
+            { id: 10083, name: "M0 – Megyeri híd", lat: 47.6146, lng: 19.0760, district: "IV", type: "bridge" },
+            { id: 10084, name: "Rákosmente – Ferihegyi út", lat: 47.4625, lng: 19.1920, district: "XVII", type: "highway" },
+            { id: 10085, name: "Csepel – Weiss M. út", lat: 47.4120, lng: 19.0700, district: "XXI", type: "highway" },
+        ];
+
+        const TYPE_COLORS = { bridge: 'cyan', highway: 'amber', intersection: 'green', square: 'purple', railway: 'red' };
+
+        // ── MAP ──
+        const map = L.map('map', { center: [47.4979, 19.0402], zoom: 13, zoomControl: true, attributionControl: false });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+        map.on('mousemove', e => { document.getElementById('hudCoords').textContent = `${e.latlng.lat.toFixed(4)}° É | ${e.latlng.lng.toFixed(4)}° K` });
+
+        // ── MARKERS & LIST ──
+        const markers = {}; const markerEls = {}; let activeId = null;
+        const districts = [...new Set(CAMERAS.map(c => c.district))].sort((a, b) => {
+            const n = x => parseInt(x.replace(/[^0-9]/g, '')); return n(a) - n(b)
+        });
+        document.getElementById('camCount').textContent = CAMERAS.length;
+        document.getElementById('distCount').textContent = districts.length;
+        document.getElementById('statCams').textContent = CAMERAS.length;
+        document.getElementById('statDist').textContent = districts.length;
+        const dSel = document.getElementById('districtFilter');
+        districts.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = `${d}. kerület`; dSel.appendChild(o) });
+
+        CAMERAS.forEach((cam, idx) => {
+            const mc = TYPE_COLORS[cam.type] || 'green';
+            const icon = L.divIcon({ className: '', html: `<div class="cam-marker marker-${mc}" id="marker-${cam.id}"></div>`, iconSize: [10, 10], iconAnchor: [5, 5] });
+            const marker = L.marker([cam.lat, cam.lng], { icon }).addTo(map);
+            marker.on('click', () => openCamera(cam));
+            markers[cam.id] = marker;
+            const item = document.createElement('div');
+            item.className = 'cam-item'; item.id = `list-${cam.id}`; item.tabIndex = 0;
+            item.setAttribute('role', 'button'); item.setAttribute('aria-label', cam.name);
+            const tc = TYPE_COLORS[cam.type] || 'green';
+            const typeLabels = { bridge: 'HÍD', highway: 'ÚT', intersection: 'CSOMP.', square: 'TÉR', railway: 'VASÚT' };
+            item.innerHTML = `<span class="cam-index">${String(idx + 1).padStart(2, '0')}</span><span class="cam-name">${cam.name}<br><small>${cam.district}. kerület</small></span><span class="cam-star" style="font-size:.7rem;margin-left:auto;flex-shrink:0;color:var(--amber)">${isFav(cam.id) ? '★' : ''}</span><span class="cam-type-badge type-${cam.type}" style="flex-shrink:0">${typeLabels[cam.type] || ''}</span>`;
+            item.onclick = () => { map.setView([cam.lat, cam.lng], 15, { animate: true }); openCamera(cam) };
+            item.onkeydown = e => { if (e.key === 'Enter') item.click() };
+            document.getElementById('cameraList').appendChild(item);
+        });
+
+        // ── SEARCH & FILTER ──
+        function applyFilter() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            const d = document.getElementById('districtFilter').value;
+            const favs = getFavs();
+            CAMERAS.forEach(cam => {
+                const matchQ = !q || cam.name.toLowerCase().includes(q);
+                const matchD = !d || cam.district === d;
+                const matchF = !favOnly || favs.includes(cam.id);
+                const match = matchQ && matchD && matchF;
+                const el = document.getElementById(`list-${cam.id}`);
+                const mEl = document.getElementById(`marker-${cam.id}`);
+                if (el) {
+                    el.classList.toggle('filtered-out', !match);
+                    // update star icon
+                    const star = el.querySelector('.cam-star');
+                    if (star) { star.textContent = favs.includes(cam.id) ? '★' : ''; star.style.color = 'var(--amber)'; }
+                }
+                if (mEl) mEl.classList.toggle('dimmed', !match);
+            });
+        }
+        document.getElementById('searchInput').addEventListener('input', applyFilter);
+        document.getElementById('districtFilter').addEventListener('change', applyFilter);
+
+        // ── PROXY CONFIG ──
+        const PROXY_BASE = 'http://localhost:5000';
+        let proxyOnline = false;
+
+        async function checkProxy() {
+            try {
+                const r = await fetch(`${PROXY_BASE}/health`, { signal: AbortSignal.timeout(1500) });
+                if (r.ok) {
+                    proxyOnline = true;
+                    document.getElementById('proxyDot').style.cssText = 'background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 1.4s infinite';
+                    document.getElementById('proxyLabel').style.color = 'var(--green)';
+                    document.getElementById('proxyLabel').textContent = 'PROXY: ONLINE';
+                } else { setProxyOffline(); }
+            } catch { setProxyOffline(); }
+        }
+        function setProxyOffline() {
+            proxyOnline = false;
+            document.getElementById('proxyDot').style.cssText = 'background:var(--red);box-shadow:0 0 6px var(--red);animation:none';
+            document.getElementById('proxyLabel').style.color = 'var(--red)';
+            document.getElementById('proxyLabel').textContent = 'PROXY: OFFLINE';
+        }
+        // Check proxy on load, then every 10s
+        checkProxy();
+        setInterval(checkProxy, 10000);
+
+        // ── API KAMERA ADATOK BETÖLTÉSE ──
+        const TYPE_LABELS = { bridge: 'HÍD', highway: 'ÚT', intersection: 'CSOMP.', square: 'TÉR', railway: 'VASÚT' };
+
+        function addCameraToMap(cam) {
+            const mc = TYPE_COLORS[cam.type] || 'green';
+            const icon = L.divIcon({ className: '', html: `<div class="cam-marker marker-${mc}" id="marker-${cam.id}"></div>`, iconSize: [10, 10], iconAnchor: [5, 5] });
+            const marker = L.marker([cam.lat, cam.lng], { icon }).addTo(map);
+            marker.on('click', () => openCamera(cam));
+            markers[cam.id] = marker;
+        }
+
+        function addCameraToList(cam) {
+            const idx = CAMERAS.length;
+            const item = document.createElement('div');
+            item.className = 'cam-item'; item.id = `list-${cam.id}`; item.tabIndex = 0;
+            item.setAttribute('role', 'button'); item.setAttribute('aria-label', cam.name);
+            item.innerHTML = `<span class="cam-index">${String(idx).padStart(2, '0')}</span><span class="cam-name">${cam.name}<br><small>${cam.district}. kerület</small></span><span class="cam-star" style="font-size:.7rem;margin-left:auto;flex-shrink:0;color:var(--amber)"></span><span class="cam-type-badge type-${cam.type}" style="flex-shrink:0">${TYPE_LABELS[cam.type] || ''}</span>`;
+            item.onclick = () => { map.setView([cam.lat, cam.lng], 15, { animate: true }); openCamera(cam); };
+            item.onkeydown = e => { if (e.key === 'Enter') item.click(); };
+            document.getElementById('cameraList').appendChild(item);
+        }
+
+        async function loadCamerasFromApi() {
+            try {
+                const r = await fetch(`${PROXY_BASE}/camlist`, { signal: AbortSignal.timeout(15000) });
+                const data = await r.json();
+                if (!data.cameras || !data.cameras.length) return;
+
+                let updated = 0, added = 0;
+
+                data.cameras.forEach(cam => {
+                    if (!cam.lat || !cam.lng || cam.lat === 0) return;
+                    const id = parseInt(cam.id);
+                    const existing = CAMERAS.find(c => c.id === id);
+
+                    if (existing) {
+                        // Koordináta és név frissítése API alapján
+                        existing.lat = cam.lat;
+                        existing.lng = cam.lng;
+                        existing.name = cam.name || existing.name;
+                        if (markers[id]) markers[id].setLatLng([cam.lat, cam.lng]);
+                        const listEl = document.getElementById(`list-${id}`);
+                        if (listEl) {
+                            const nameEl = listEl.querySelector('.cam-name');
+                            if (nameEl) nameEl.innerHTML = `${existing.name}<br><small>${existing.district}. kerület</small>`;
+                        }
+                        updated++;
+                    } else {
+                        // Új kamera az API-ból
+                        const newCam = { id, name: cam.name || `Kamera ${id}`, lat: cam.lat, lng: cam.lng, district: "–", type: "intersection" };
+                        CAMERAS.push(newCam);
+                        addCameraToMap(newCam);
+                        addCameraToList(newCam);
+                        added++;
+                    }
+                });
+
+                // Számláló frissítése
+                document.getElementById('camCount').textContent = CAMERAS.length;
+                document.getElementById('statCams').textContent = CAMERAS.length;
+                console.log(`[God's Eye] Kamera adatok: ${updated} frissítve, ${added} új hozzáadva`);
+
+                if (!data.ready) {
+                    // Cache még tölt a proxyn – újra 6 mp múlva
+                    setTimeout(loadCamerasFromApi, 6000);
+                }
+            } catch (e) {
+                console.log("[God's Eye] camlist hiba:", e.message);
+            }
+        }
+
+        // 1.5 mp-el a proxy check után töltjük a kamera adatokat
+        setTimeout(() => { if (proxyOnline) loadCamerasFromApi(); }, 1500);
+
+        function getCamUrl(camId) {
+            if (proxyOnline) return `${PROXY_BASE}/cam/${camId}?t=${Date.now()}`;
+            return null; // Direkt hozzáférés nem lehetséges – proxy szükséges (POST API)
+        }
+
+        // ── FAVORITES ──
+        let favOnly = false;
+        function getFavs() { try { return JSON.parse(localStorage.getItem('ge_favs') || '[]'); } catch { return []; } }
+        function saveFavs(f) { localStorage.setItem('ge_favs', JSON.stringify(f)); }
+        function isFav(id) { return getFavs().includes(id); }
+        function toggleFav() {
+            if (!currentCam) return;
+            const favs = getFavs();
+            const idx = favs.indexOf(currentCam.id);
+            if (idx === -1) favs.push(currentCam.id); else favs.splice(idx, 1);
+            saveFavs(favs);
+            updateFavBtn();
+            applyFilter();
+        }
+        function clearFavs() { saveFavs([]); applyFilter(); updateFavBtn(); }
+        function updateFavBtn() {
+            const btn = document.getElementById('favBtn');
+            if (!btn || !currentCam) return;
+            const fav = isFav(currentCam.id);
+            btn.textContent = fav ? '★ KEDVENC' : '☆ KEDVENC';
+            btn.style.color = fav ? 'var(--amber)' : '#555';
+            btn.style.borderColor = fav ? 'var(--amber)' : 'var(--border)';
+        }
+        function toggleFavFilter() {
+            favOnly = !favOnly;
+            const btn = document.getElementById('favFilterBtn');
+            btn.style.color = favOnly ? 'var(--amber)' : '#555';
+            btn.style.borderColor = favOnly ? 'var(--amber)' : 'var(--border)';
+            btn.textContent = favOnly ? '★ KEDVENCEK' : '☆ KEDVENCEK';
+            applyFilter();
+        }
+
+        // ── CAMERA MODAL ──
+        let currentCam = null; let currentIdx = -1;
+        function getVisibleCams() { return CAMERAS.filter(cam => { const el = document.getElementById(`list-${cam.id}`); return el && !el.classList.contains('filtered-out') }) }
+        function openCamera(cam) {
+            currentCam = cam; const vis = getVisibleCams(); currentIdx = vis.findIndex(c => c.id === cam.id);
+            if (activeId) { document.getElementById(`list-${activeId}`)?.classList.remove('active'); document.getElementById(`marker-${activeId}`)?.classList.remove('active') }
+            activeId = cam.id;
+            document.getElementById(`list-${cam.id}`)?.classList.add('active');
+            document.getElementById(`marker-${cam.id}`)?.classList.add('active');
+            document.getElementById('modalTitle').textContent = `📍 ${cam.name.toUpperCase()}`;
+            document.getElementById('modalMeta').textContent = `ID:${cam.id} | ${cam.district}. kerület | ${cam.lat.toFixed(4)}°N ${cam.lng.toFixed(4)}°E | ${cam.type.toUpperCase()}`;
+            const typeLabels = { bridge: 'HÍD', highway: 'AUTÓÚT', intersection: 'CSOMÓPONT', square: 'TÉR', railway: 'VASÚT' };
+            document.getElementById('camInfoBar').innerHTML = `
+    <div>HELYSZÍN: <span>${cam.name}</span></div>
+    <div>KERÜLET: <span>${cam.district}. ker.</span></div>
+    <div>TÍPUS: <span>${typeLabels[cam.type] || cam.type}</span></div>
+    <div>KAM-ID: <span>${cam.id}</span></div>
+    <button class="btn-refresh" onclick="loadFeed()">↺ FRISSÍT</button>`;
+            document.getElementById('snapTimestamp').textContent = 'SNAPSHOT: betöltés...';
+            updateFavBtn();
+            document.getElementById('camModal').classList.add('open');
+            loadFeed();
+        }
+        function loadFeed() {
+            if (!currentCam) return;
+            const feedEl = document.getElementById('camFeed');
+            const ts = document.getElementById('snapTimestamp');
+            feedEl.innerHTML = `<div class="feed-loading">● CSATLAKOZÁS... [ID:${currentCam.id}]${proxyOnline ? ' [PROXY]' : ''}</div><div class="feed-overlay"></div>`;
+            if (ts) ts.textContent = 'SNAPSHOT: betöltés...';
+            const img = new Image();
+            img.alt = `${currentCam.name} kamera kép`;
+            const loadStart = Date.now();
+            img.onload = () => {
+                feedEl.innerHTML = '<div class="feed-overlay"></div>';
+                img.style.cssText = 'width:100%;display:block;object-fit:contain;max-height:50vh';
+                feedEl.insertBefore(img, feedEl.firstChild);
+                const now = new Date();
+                const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                const ms = Date.now() - loadStart;
+                if (ts) ts.textContent = `SNAPSHOT: ${hm} · ${ms}ms · ${proxyOnline ? 'PROXY' : 'DIRECT'}`;
+            };
+            img.onerror = () => showFallback(feedEl, currentCam);
+            const camUrl = getCamUrl(currentCam.id);
+            if (!camUrl) { showFallback(feedEl, currentCam); return; }
+            img.src = camUrl;
+        }
+        function showFallback(feedEl, cam) {
+            const ts = document.getElementById('snapTimestamp');
+            if (ts) ts.textContent = proxyOnline ? 'SNAPSHOT: hiba (proxy fut, de a kamera nem válaszol)' : 'SNAPSHOT: CORS blokk – indítsd a proxyt!';
+            feedEl.innerHTML = `<div class="feed-overlay"></div>
+    <div style="padding:30px;text-align:center;width:100%">
+      <div style="font-family:'Orbitron',monospace;font-size:.9rem;color:var(--green);margin-bottom:16px;text-shadow:0 0 10px var(--green)">KAMERA AZONOSÍTVA</div>
+      <div style="font-size:.65rem;color:#555;line-height:2;margin-bottom:20px">
+        <div>LOKÁCIÓ: <span style="color:var(--text)">${cam.name}</span></div>
+        <div>KERÜLET: <span style="color:var(--text)">${cam.district}. kerület</span></div>
+        <div>GPS: <span style="color:var(--text)">${cam.lat.toFixed(4)}° É, ${cam.lng.toFixed(4)}° K</span></div>
+        <div>PROXY: <span style="color:${proxyOnline ? 'var(--green)' : 'var(--red)'}">${proxyOnline ? 'ONLINE – kamera nem válaszol' : 'OFFLINE – indítsd el!'}</span></div>
+      </div>
+      ${!proxyOnline ? `<div style="font-size:.6rem;color:#555;border:1px solid var(--border);padding:12px;margin:0 auto 16px;max-width:380px;line-height:2;text-align:left">
+        <div style="color:var(--green);margin-bottom:6px">▶ PROXY INDÍTÁSA:</div>
+        <div style="color:#666">pip install flask flask-cors requests</div>
+        <div style="color:var(--text)">python proxy.py</div>
+      </div>` : ''}
+      <a href="https://kozutfigyelo.budapestkozut.hu/" target="_blank" rel="noopener" style="display:inline-block;border:1px solid var(--green-dim);color:var(--green);font-family:'Share Tech Mono',monospace;font-size:.65rem;padding:8px 20px;text-decoration:none;letter-spacing:2px" onmouseover="this.style.background='var(--green-faint)'" onmouseout="this.style.background='transparent'">↗ MEGNYITÁS EREDETIBEN</a>
+    </div>`;
+        }
+        function closeModal() {
+            document.getElementById('camModal').classList.remove('open');
+            if (activeId) { document.getElementById(`list-${activeId}`)?.classList.remove('active'); document.getElementById(`marker-${activeId}`)?.classList.remove('active'); activeId = null }
+            currentCam = null; currentIdx = -1;
+        }
+        document.getElementById('prevCamBtn').onclick = () => { const v = getVisibleCams(); if (v.length < 2) return; currentIdx = (currentIdx - 1 + v.length) % v.length; const c = v[currentIdx]; map.setView([c.lat, c.lng], 15, { animate: true }); openCamera(c) };
+        document.getElementById('nextCamBtn').onclick = () => { const v = getVisibleCams(); if (v.length < 2) return; currentIdx = (currentIdx + 1) % v.length; const c = v[currentIdx]; map.setView([c.lat, c.lng], 15, { animate: true }); openCamera(c) };
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeModal();
+            if (document.getElementById('camModal').classList.contains('open')) {
+                if (e.key === 'ArrowLeft') document.getElementById('prevCamBtn').click();
+                if (e.key === 'ArrowRight') document.getElementById('nextCamBtn').click();
+            }
+        });
+        document.getElementById('camModal').addEventListener('click', e => { if (e.target === document.getElementById('camModal')) closeModal() });
+
+        // ── CLOCK & UPTIME ──
+        const startTime = Date.now();
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').textContent = [now.getHours(), now.getMinutes(), now.getSeconds()].map(v => String(v).padStart(2, '0')).join(':');
+            const up = Math.floor((Date.now() - startTime) / 1000);
+            const uh = String(Math.floor(up / 3600)).padStart(2, '0'), um = String(Math.floor(up % 3600 / 60)).padStart(2, '0'), us = String(up % 60).padStart(2, '0');
+            document.getElementById('statUptime').textContent = `${uh}:${um}:${us}`;
+        }
+        setInterval(updateClock, 1000); updateClock();
+
+        // ── AUTO-CYCLE PANEL ──
+        let cycleIdx = 0; let cycleTimer = null; const CYCLE_MS = 5000;
+        function cycleNext() {
+            const vis = getVisibleCams(); if (!vis.length) return;
+            cycleIdx = cycleIdx % vis.length; const cam = vis[cycleIdx];
+            document.getElementById('cpName').textContent = cam.name.toUpperCase();
+            document.getElementById('cpDetail').textContent = `${cam.district}. ker. | ${cam.lat.toFixed(4)}°É ${cam.lng.toFixed(4)}°K`;
+            cycleIdx = (cycleIdx + 1) % vis.length;
+            let prog = 0; const fill = document.getElementById('cycleFill');
+            clearInterval(cycleTimer);
+            cycleTimer = setInterval(() => { prog += 50; fill.style.width = ((prog / CYCLE_MS) * 100) + '%'; if (prog >= CYCLE_MS) { clearInterval(cycleTimer); cycleNext() } }, 50);
+        }
+        document.getElementById('cyclePanel').onclick = () => { const vis = getVisibleCams(); const i = (cycleIdx - 1 + vis.length) % vis.length; if (vis[i]) openCamera(vis[i]) };
+
+        // ── MOBILE MENU ──
+        document.getElementById('hamburgerBtn').onclick = () => { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('open') };
+        document.getElementById('sidebarOverlay').onclick = () => { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('open') };
+
+        // ── BOOT SEQUENCE ──
+        const bootMessages = ['[SYS] GOD\'S EYE v3.2.7 // BUDAPEST SECTOR', '[NET] Hálózati interfész inicializálás...', '[NET] Kapcsolat: BIZTONSÁGOS // TLS 1.3', '[MAP] Térképmodul betöltése... CartoDB Dark', '[GPS] Műholdas pozícionálás: 47.4979°É 19.0402°K', '[CAM] Kamera adatbázis szinkronizálás...', '[CAM] ' + CAMERAS.length + ' kamera azonosítva // ' + districts.length + ' kerület',
+            '[SEC] Titkosítási protokoll: AES-256-GCM', '[HUD] HUD overlay inicializálás...', '[RDR] Radar sweep modul: AKTÍV', '[SYS] RENDSZER ÁLLAPOT: ████████████ ONLINE'];
+        (async function boot() {
+            const linesEl = document.getElementById('bootLines'), barEl = document.getElementById('bootBar');
+            for (let i = 0; i < bootMessages.length; i++) {
+                const div = document.createElement('div'); div.textContent = bootMessages[i];
+                div.style.animationDelay = i * 0.05 + 's'; linesEl.appendChild(div);
+                barEl.style.width = ((i + 1) / bootMessages.length * 100) + '%';
+                await new Promise(r => setTimeout(r, 180));
+            }
+            await new Promise(r => setTimeout(r, 600));
+            document.getElementById('bootScreen').classList.add('done');
+            setTimeout(() => { document.getElementById('bootScreen').remove(); cycleNext() }, 800);
+        })();
+
+        // ── AUDIO ENGINE ──
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+        function getAudioCtx() {
+            if (!audioCtx) audioCtx = new AudioCtx();
+            return audioCtx;
+        }
+        function playBeep(freq = 880, duration = 0.08, type = 'square', vol = 0.08) {
+            try {
+                const ctx = getAudioCtx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = type; osc.frequency.setValueAtTime(freq, ctx.currentTime);
+                gain.gain.setValueAtTime(vol, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+                osc.start(ctx.currentTime); osc.stop(ctx.currentTime + duration);
+            } catch (e) { }
+        }
+        function playLockOn() {
+            playBeep(600, 0.06, 'square', 0.07);
+            setTimeout(() => playBeep(900, 0.1, 'square', 0.07), 80);
+        }
+        function playClick() { playBeep(440, 0.05, 'sine', 0.05); }
+        function playClose() { playBeep(300, 0.1, 'square', 0.05); }
+
+        // Patch openCamera to play sound
+        const _origOpen = openCamera;
+        // We'll inject audio directly into the existing openCamera function below
+
+        // ── CROSSHAIR: follows map center on move ──
+        // (already in CSS, static center – no JS needed unless we want it to pulse on click)
+        map.on('click', () => {
+            playClick();
+            const ring = document.querySelector('.crosshair-ring');
+            ring.style.transition = 'none';
+            ring.style.transform = 'translate(-50%,-50%) scale(1)';
+            ring.style.opacity = '.8';
+            setTimeout(() => {
+                ring.style.transition = 'transform .6s ease-out, opacity .6s ease-out';
+                ring.style.transform = 'translate(-50%,-50%) scale(4)';
+                ring.style.opacity = '0';
+                setTimeout(() => {
+                    ring.style.transition = 'none';
+                    ring.style.transform = 'translate(-50%,-50%) scale(1)';
+                    ring.style.opacity = '.5';
+                }, 620);
+            }, 10);
+        });
+
+        // Patch marker clicks to play lock-on sound
+        CAMERAS.forEach(cam => {
+            const m = markers[cam.id];
+            if (m) m.on('click', () => playLockOn());
+        });
+
+        // Patch sidebar item clicks for audio
+        document.getElementById('cameraList').addEventListener('click', () => playLockOn());
+
+        // Patch close modal
+        const origClose = closeModal;
+        window.closeModal = function () { playClose(); origClose(); };
+
+        // ── MULTI-CAM ──
+        let gridSize = 4;
+        let multicamCams = [];
+        let multicamTimers = [];
+
+        function setGrid(n) {
+            gridSize = n;
+            document.getElementById('btnGrid4').classList.toggle('active', n === 4);
+            document.getElementById('btnGrid9').classList.toggle('active', n === 9);
+            document.getElementById('multicamGrid').className = `multicam-grid grid-${n}`;
+            buildMulticam();
+        }
+
+        function pickCams(n) {
+            // Pick n cameras spread across types for variety
+            const shuffled = [...CAMERAS].sort(() => Math.random() - 0.5);
+            return shuffled.slice(0, n);
+        }
+
+        function buildMulticam() {
+            multicamTimers.forEach(t => clearInterval(t));
+            multicamTimers = [];
+            multicamCams = pickCams(gridSize);
+            const grid = document.getElementById('multicamGrid');
+            grid.innerHTML = '';
+            multicamCams.forEach((cam, i) => {
+                const cell = document.createElement('div');
+                cell.className = 'multicam-cell';
+                cell.id = `mcell-${i}`;
+                cell.innerHTML = `
+                    <div class="cell-loading" id="mcloading-${i}">● CSATL...</div>
+                    <div class="cell-id">CAM-${cam.id}</div>
+                    <div class="cell-rec">REC</div>
+                    <div class="cell-label">${cam.name} · ${cam.district}. ker.</div>
+                `;
+                cell.onclick = () => {
+                    playLockOn();
+                    closeMulticam();
+                    map.setView([cam.lat, cam.lng], 15, { animate: true });
+                    openCamera(cam);
+                };
+                grid.appendChild(cell);
+                loadCellFeed(cam, i);
+                // Auto-refresh every 30s
+                const t = setInterval(() => loadCellFeed(cam, i), 30000);
+                multicamTimers.push(t);
+            });
+        }
+
+        function loadCellFeed(cam, idx) {
+            const cell = document.getElementById(`mcell-${idx}`);
+            if (!cell) return;
+            const loadingEl = document.getElementById(`mcloading-${idx}`);
+            if (loadingEl) loadingEl.style.display = 'flex';
+            // Remove old img/offline if any
+            cell.querySelectorAll('img, .cell-offline').forEach(e => e.remove());
+
+            const img = new Image();
+            img.onload = () => {
+                if (loadingEl) loadingEl.style.display = 'none';
+                img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+                cell.insertBefore(img, cell.firstChild);
+            };
+            img.onerror = () => {
+                if (loadingEl) loadingEl.style.display = 'none';
+                const off = document.createElement('div');
+                off.className = 'cell-offline';
+                off.innerHTML = `
+                    <div style="color:#222;font-size:.6rem">CORS VÉDETT</div>
+                    <div style="color:#333;font-size:.5rem">${cam.name}</div>
+                    <a href="https://kozutfigyelo.budapestkozut.hu/" target="_blank" rel="noopener">↗ MEGNYIT</a>
+                `;
+                cell.insertBefore(off, cell.firstChild);
+            };
+            const url = getCamUrl(cam.id);
+            if (!url) { img.alt = 'PROXY SZÜKSÉGES'; return; }
+            img.src = url;
+        }
+
+        function refreshAllCells() {
+            playBeep(660, 0.06, 'sine', 0.06);
+            multicamCams.forEach((cam, i) => loadCellFeed(cam, i));
+        }
+
+        function openMulticam() {
+            playLockOn();
+            document.getElementById('multicamModal').classList.add('open');
+            buildMulticam();
+        }
+
+        function closeMulticam() {
+            playClose();
+            multicamTimers.forEach(t => clearInterval(t));
+            multicamTimers = [];
+            document.getElementById('multicamModal').classList.remove('open');
+        }
+
+        document.getElementById('openMulticamBtn').onclick = openMulticam;
+
+        document.getElementById('multicamModal').addEventListener('click', e => {
+            if (e.target === document.getElementById('multicamModal')) closeMulticam();
+        });
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && document.getElementById('multicamModal').classList.contains('open')) {
+                closeMulticam();
+            }
+        });
+
+    </script>
+</body>
+
+</html>

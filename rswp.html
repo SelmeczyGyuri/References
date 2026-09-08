@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anchor — RSVP Speed Reader</title>
+    <style>
+        :root {
+            --bg: #0b0c0e;
+            --bg-raised: #131519;
+            --ink: #e9e9ea;
+            --ink-dim: #8a8d93;
+            --ink-faint: #4a4d54;
+            --anchor: #e6432f;
+            --anchor-dim: #6b241c;
+            --line: #23262c;
+            --accent-soft: #d7d9dc;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .app {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* ---------- Header ---------- */
+        header {
+            padding: 20px 24px 14px;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        header .brand {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        header h1 {
+            font-size: 15px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            font-weight: 700;
+            margin: 0;
+            color: var(--ink);
+        }
+
+        header h1 span {
+            color: var(--anchor);
+        }
+
+        header .tag {
+            font-size: 11px;
+            color: var(--ink-faint);
+            letter-spacing: 0.04em;
+        }
+
+        /* ---------- Reader stage ---------- */
+        .stage {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 40vh;
+            padding: 40px 16px;
+            overflow: hidden;
+        }
+
+        /* the reticle: fixed vertical guide + tick marks around the ORP */
+        .reticle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 2px;
+            pointer-events: none;
+        }
+
+        .tick {
+            position: absolute;
+            left: 50%;
+            width: 1px;
+            background: var(--ink-faint);
+            transform: translateX(-50%);
+        }
+
+        .tick.top {
+            top: -46px;
+            height: 18px;
+        }
+
+        .tick.bottom {
+            bottom: -46px;
+            height: 18px;
+        }
+
+        .tick::before {
+            content: "";
+            position: absolute;
+            left: 50%;
+            width: 7px;
+            height: 1px;
+            background: var(--ink-faint);
+            transform: translateX(-50%);
+        }
+
+        .tick.top::before {
+            top: 0;
+        }
+
+        .tick.bottom::before {
+            bottom: 0;
+        }
+
+        .word-row {
+            display: flex;
+            align-items: baseline;
+            width: min(90vw, 900px);
+            font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+            font-weight: 500;
+            font-size: clamp(28px, 6vw, 56px);
+            line-height: 1;
+            white-space: pre;
+        }
+
+        .seg {
+            display: block;
+        }
+
+        .seg.pre {
+            flex: 1 1 0;
+            text-align: right;
+            color: var(--accent-soft);
+        }
+
+        .seg.orp {
+            flex: 0 0 auto;
+            color: var(--anchor);
+            text-align: center;
+            position: relative;
+        }
+
+        .seg.post {
+            flex: 1 1 0;
+            text-align: left;
+            color: var(--accent-soft);
+        }
+
+        .idle-msg {
+            position: absolute;
+            bottom: 18px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: var(--ink-faint);
+            letter-spacing: 0.03em;
+        }
+
+        /* ---------- Progress ---------- */
+        .progress-wrap {
+            padding: 0 24px;
+        }
+
+        .progress-track {
+            height: 3px;
+            background: var(--line);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--anchor);
+            transition: width 0.08s linear;
+        }
+
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--ink-faint);
+            padding: 6px 2px 0;
+            letter-spacing: 0.02em;
+        }
+
+        /* ---------- Controls ---------- */
+        .controls {
+            border-top: 1px solid var(--line);
+            padding: 18px 24px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .transport {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+        }
+
+        button {
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            outline: none;
+        }
+
+        .btn {
+            background: var(--bg-raised);
+            color: var(--ink);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            transition: border-color 0.15s ease, transform 0.05s ease;
+        }
+
+        .btn:hover {
+            border-color: var(--ink-faint);
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn.primary {
+            background: var(--anchor);
+            border-color: var(--anchor);
+            color: #fff;
+            min-width: 108px;
+        }
+
+        .btn.primary:hover {
+            border-color: var(--anchor);
+            filter: brightness(1.08);
+        }
+
+        .btn:focus-visible,
+        input:focus-visible,
+        textarea:focus-visible {
+            outline: 2px solid var(--anchor);
+            outline-offset: 2px;
+        }
+
+        .speed-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .speed-row label {
+            font-size: 11px;
+            color: var(--ink-faint);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            min-width: 140px;
+            accent-color: var(--anchor);
+            background: transparent;
+        }
+
+        .wpm-val {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 15px;
+            color: var(--ink);
+            min-width: 64px;
+            text-align: right;
+        }
+
+        .presets {
+            display: flex;
+            gap: 6px;
+        }
+
+        .preset {
+            background: var(--bg-raised);
+            border: 1px solid var(--line);
+            color: var(--ink-dim);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .preset.active {
+            color: var(--anchor);
+            border-color: var(--anchor-dim);
+        }
+
+        .preset:hover {
+            color: var(--ink);
+            border-color: var(--ink-faint);
+        }
+
+        .text-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .text-panel-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .text-panel-head span {
+            font-size: 11px;
+            color: var(--ink-faint);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 90px;
+            resize: vertical;
+            background: var(--bg-raised);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            color: var(--ink);
+            font-size: 14px;
+            line-height: 1.5;
+            padding: 12px 14px;
+            font-family: inherit;
+        }
+
+        textarea::placeholder {
+            color: var(--ink-faint);
+        }
+
+        @media (max-width: 560px) {
+            header {
+                padding: 16px 16px 12px;
+            }
+
+            .controls {
+                padding: 16px 16px 20px;
+            }
+
+            .progress-wrap {
+                padding: 0 16px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+
+        <header>
+            <div class="brand">
+                <h1>Anchor<span>·</span>RSVP Reader</h1>
+            </div>
+            <div class="tag">optimal recognition point pacing</div>
+        </header>
+
+        <div class="stage" id="stage">
+            <div class="reticle">
+                <div class="tick top"></div>
+                <div class="tick bottom"></div>
+            </div>
+            <div class="word-row" id="wordRow">
+                <span class="seg pre" id="segPre"></span><span class="seg orp" id="segOrp">A</span><span
+                    class="seg post" id="segPost">nchor</span>
+            </div>
+            <div class="idle-msg" id="idleMsg">paste your text below, then press play or hit space</div>
+        </div>
+
+        <div class="progress-wrap">
+            <div class="progress-track">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-meta">
+                <span id="wordCounter">0 / 0 words</span>
+                <span id="timeLeft">0:00 remaining</span>
+            </div>
+        </div>
+
+        <div class="controls">
+
+            <div class="transport">
+                <button class="btn" id="resetBtn" title="Restart from the beginning">⟲ Reset</button>
+                <button class="btn primary" id="playBtn">▶ Play</button>
+                <button class="btn" id="backBtn" title="Back 10 words">−10</button>
+            </div>
+
+            <div class="speed-row">
+                <label for="wpmSlider">Speed</label>
+                <input type="range" id="wpmSlider" min="100" max="900" step="10" value="300">
+                <span class="wpm-val" id="wpmVal">300 wpm</span>
+                <div class="presets">
+                    <button class="preset" data-wpm="300">300</button>
+                    <button class="preset" data-wpm="360">360</button>
+                    <button class="preset" data-wpm="600">600</button>
+                    <button class="preset" data-wpm="900">900</button>
+                </div>
+            </div>
+
+            <div class="text-panel">
+                <div class="text-panel-head">
+                    <span>Your text</span>
+                    <span id="charCount" style="font-family:'IBM Plex Mono',monospace;">0 chars</span>
+                </div>
+                <textarea id="textInput"
+                    placeholder="Paste an article, a chapter, your notes — anything — then press play.">Reading at speed works best when your eyes don't have to travel. Each word here is aligned so one letter, its optimal recognition point, always lands in exactly the same spot. Longer words and sentence endings get a little extra time, so your brain can keep up without breaking the rhythm. Try dragging the speed slider, or tap one of the presets above: 300, 360, 600, or even 900 words per minute.</textarea>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        (function () {
+            const els = {
+                stage: document.getElementById('stage'),
+                segPre: document.getElementById('segPre'),
+                segOrp: document.getElementById('segOrp'),
+                segPost: document.getElementById('segPost'),
+                idleMsg: document.getElementById('idleMsg'),
+                progressFill: document.getElementById('progressFill'),
+                wordCounter: document.getElementById('wordCounter'),
+                timeLeft: document.getElementById('timeLeft'),
+                playBtn: document.getElementById('playBtn'),
+                resetBtn: document.getElementById('resetBtn'),
+                backBtn: document.getElementById('backBtn'),
+                wpmSlider: document.getElementById('wpmSlider'),
+                wpmVal: document.getElementById('wpmVal'),
+                presets: Array.from(document.querySelectorAll('.preset')),
+                textInput: document.getElementById('textInput'),
+                charCount: document.getElementById('charCount'),
+            };
+
+            let words = [];
+            let idx = 0;
+            let playing = false;
+            let timer = null;
+            let wpm = 300;
+
+            // ---- ORP position lookup, per the reference table ----
+            function orpIndex(coreLen) {
+                if (coreLen <= 1) return 1;
+                if (coreLen <= 5) return 2;
+                if (coreLen <= 9) return 3;
+                if (coreLen <= 13) return 4;
+                return 5;
+            }
+
+            function stripTrailingPunct(w) {
+                return w.replace(/[^\p{L}\p{N}]+$/gu, '');
+            }
+
+            function tokenize(text) {
+                return text.split(/\s+/).map(w => w.trim()).filter(Boolean);
+            }
+
+            function durationForWord(word, baseMs) {
+                const core = stripTrailingPunct(word);
+                const isLong = core.length >= 10;
+                const endsSentence = /[.!?]$/.test(word);
+                const endsClause = /[,;:]$/.test(word) && !endsSentence;
+
+                let mult = 1;
+                if (isLong) mult = Math.max(mult, 1.5);
+                if (endsClause) mult = Math.max(mult, 1.75);
+                if (endsSentence) mult = Math.max(mult, 2);
+                return baseMs * mult;
+            }
+
+            function renderWord(word) {
+                const core = stripTrailingPunct(word) || word;
+                let pos = orpIndex(core.length);
+                pos = Math.min(pos, word.length); // safety for edge cases
+                const pre = word.slice(0, pos - 1);
+                const orp = word.slice(pos - 1, pos);
+                const post = word.slice(pos);
+                els.segPre.textContent = pre;
+                els.segOrp.textContent = orp;
+                els.segPost.textContent = post;
+            }
+
+            function fmtTime(sec) {
+                sec = Math.max(0, Math.round(sec));
+                const m = Math.floor(sec / 60);
+                const s = sec % 60;
+                return m + ':' + String(s).padStart(2, '0');
+            }
+
+            function updateMeta() {
+                els.wordCounter.textContent = (words.length ? idx + 1 : 0) + ' / ' + words.length + ' words';
+                els.progressFill.style.width = words.length ? (idx / words.length * 100) + '%' : '0%';
+
+                // rough remaining-time estimate at current wpm
+                const baseMs = 60000 / wpm;
+                let remainingMs = 0;
+                for (let i = idx; i < words.length; i++) {
+                    remainingMs += durationForWord(words[i], baseMs);
+                }
+                els.timeLeft.textContent = fmtTime(remainingMs / 1000) + ' remaining';
+            }
+
+            function showIdle(msg) {
+                els.idleMsg.style.display = 'block';
+                els.idleMsg.textContent = msg;
+            }
+            function hideIdle() { els.idleMsg.style.display = 'none'; }
+
+            function loadTextIfNeeded() {
+                if (words.length === 0) {
+                    words = tokenize(els.textInput.value);
+                    idx = 0;
+                }
+            }
+
+            function step() {
+                if (idx >= words.length) {
+                    pause();
+                    showIdle('done — press reset to read again');
+                    updateMeta();
+                    return;
+                }
+                renderWord(words[idx]);
+                updateMeta();
+                const baseMs = 60000 / wpm;
+                const dur = durationForWord(words[idx], baseMs);
+                idx++;
+                timer = setTimeout(step, dur);
+            }
+
+            function play() {
+                loadTextIfNeeded();
+                if (words.length === 0) return;
+                if (idx >= words.length) idx = 0;
+                playing = true;
+                hideIdle();
+                els.playBtn.textContent = '⏸ Pause';
+                els.textInput.disabled = true;
+                step();
+            }
+
+            function pause() {
+                playing = false;
+                clearTimeout(timer);
+                els.playBtn.textContent = '▶ Play';
+                els.textInput.disabled = false;
+            }
+
+            function reset() {
+                pause();
+                words = tokenize(els.textInput.value);
+                idx = 0;
+                renderWord(words[0] || 'Anchor');
+                showIdle('paste your text below, then press play or hit space');
+                updateMeta();
+            }
+
+            function back(n) {
+                pause();
+                idx = Math.max(0, idx - n);
+                if (words[idx]) renderWord(words[idx]);
+                updateMeta();
+            }
+
+            // ---- wiring ----
+            els.playBtn.addEventListener('click', () => playing ? pause() : play());
+            els.resetBtn.addEventListener('click', reset);
+            els.backBtn.addEventListener('click', () => back(10));
+
+            els.wpmSlider.addEventListener('input', () => {
+                wpm = parseInt(els.wpmSlider.value, 10);
+                els.wpmVal.textContent = wpm + ' wpm';
+                els.presets.forEach(p => p.classList.toggle('active', parseInt(p.dataset.wpm, 10) === wpm));
+                updateMeta();
+            });
+
+            els.presets.forEach(p => {
+                p.addEventListener('click', () => {
+                    wpm = parseInt(p.dataset.wpm, 10);
+                    els.wpmSlider.value = wpm;
+                    els.wpmVal.textContent = wpm + ' wpm';
+                    els.presets.forEach(x => x.classList.toggle('active', x === p));
+                    updateMeta();
+                });
+            });
+
+            els.textInput.addEventListener('input', () => {
+                els.charCount.textContent = els.textInput.value.length + ' chars';
+                words = [];
+                idx = 0;
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' && document.activeElement !== els.textInput) {
+                    e.preventDefault();
+                    playing ? pause() : play();
+                }
+                if (e.code === 'ArrowLeft') { back(10); }
+            });
+
+            // init
+            els.charCount.textContent = els.textInput.value.length + ' chars';
+            reset();
+        })();
+    </script>
+</body>
+
+</html>
